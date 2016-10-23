@@ -7,7 +7,6 @@ app.config.from_object(__name__)
 
 @app.route("/", methods=['GET', 'POST'])
 def entry():
-    # Message information
     message_body = request.values.get('Body').strip()
     message_upper = message_body.upper()
     resp = twilio.twiml.Response()
@@ -17,10 +16,10 @@ def entry():
         "SIGNUP":"/signup",
         "EDIT":"/edit",
         "RESTART":"/restart",
+        "VIEW":"/view",
         "BALANCE":"/balance",
         "PAY":"/pay",
         "REQUEST":"/request",
-        "VIEW":"/view",
     }
 
     states = {
@@ -101,7 +100,11 @@ def restart():
     session['signup_started'] = False
     session['pin_requested'] = False
     session['first_name_given'] = False
-
+    
+    session['first_name'] = None
+    session['last_name'] = None
+    session['pin'] = None
+    
     session['edit_started'] = False
     session['pin_confirmed'] = False
     session['trait_selected'] = False
