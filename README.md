@@ -12,7 +12,7 @@ This application is a proof of concept. Every user is given a mock account using
 
 ##Technology
 
-PayWithText was built using Flask, a set of Python web frameworks. We store our information using MongoDB, host our application on AWS, and communicate with users using Twilio.
+PayWithText was built using Django, a set of Python web frameworks. We store our information using PostgresSQL and host our application on Heroku. Communication is facilitated by Twilio, and payment processing is done by the Capital One API.
 
 ##Authors and Contributors
 

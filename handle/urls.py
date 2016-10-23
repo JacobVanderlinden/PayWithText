@@ -11,5 +11,6 @@ urlpatterns = [
 	url(r'^balance$', views.balance, name='balance'),
 	url(r'^pay$', views.pay, name='pay'),
 	url(r'^request$', views.req, name='request'),
+	url(r'^payrequest$', views.payrequest, name='payrequest'),
 	url(r'^viewdb$', views.viewdb, name='viewdb')
 ]

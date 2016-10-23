@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 import twilio.twiml
-from models import Customer
+from models import Customer, outstanding_requests
 from django.http.response import HttpResponse
 from django_twilio.decorators import twilio_view
 from twilio.rest import TwilioRestClient
@@ -134,12 +134,15 @@ def entry(request):
         "BALANCE":"/balance",
         "PAY":"/pay",
         "REQUEST":"/request",
+        "PAYREQUEST":"/payrequest",
     }
     # States user can be in that require redirect
     states = {
         "signup_started":"/signup",
         "edit_started":"/edit",
         "pending_payment":"/pay",
+        "request_started":"/request",
+        "request_made":"/payrequest",
     }
     # Check if user is in states established above
     state_added = False
@@ -216,6 +219,12 @@ def signup(request):
 def view(request):
     # Create TwiML response
     resp = twilio.twiml.Response()
+    try:
+        this_customer = Customer.objects.get(phone_number=request.POST.get('From', '')[2:])
+    except:
+        message = "Please register to use this feature!"
+        resp.sms(message)
+        return str(resp)
     # String with user information
     user_number = request.POST.get('From', None)[2:]
     try:
@@ -233,6 +242,12 @@ def view(request):
 def restart(request):
     # Create TwiML response
     resp = twilio.twiml.Response()
+    try:
+        this_customer = Customer.objects.get(phone_number=request.POST.get('From', '')[2:])
+    except:
+        message = "You're not signed up - you can't restart!"
+        resp.sms(message)
+        return str(resp)
     # Remove states from signup
     request.session['is_authenticated'] = False
     request.session['signup_started'] = False
@@ -249,7 +264,9 @@ def restart(request):
     # Remove states from pay and request
     request.session['pending_payment'] = False
     request.sesssion['payment_request'] = False
-
+    request.session['request_started'] = False
+    request.session['request_shown'] = False
+    request.session['request_selected'] = False
     # Removing row from database
     try:
         Customer.objects.get(phone_number=request.POST.get('From', None)[2:]).delete()
@@ -273,6 +290,7 @@ def cmd(request):
     BALANCE - Check your balance
     PAY - Create a payment
     REQUEST - Request a payment
+    PAYREQUEST - Approve/deny a request
     VIEW - View your information
     """
     resp.sms(message)
@@ -284,6 +302,12 @@ def cmd(request):
 def edit(request):
     # Establish response and evaluate message body text
     resp = twilio.twiml.Response()
+    try:
+        this_customer = Customer.objects.get(phone_number=request.POST.get('From', '')[2:])
+    except:
+        message = "Please register to use this feature!"
+        resp.sms(message)
+        return str(resp)
     message_body = request.POST.get('Body', '')
     # Check for Edit states
     edit_started = request.session.get('edit_started', False)
@@ -365,6 +389,14 @@ def balance(request):
     # Create TwiML response
     resp = twilio.twiml.Response()
     try:
+        this_customer = Customer.objects.get(phone_number=request.POST.get('From', '')[2:])
+    except:
+        message = "Please register to use this feature!"
+        request.session['payment_request'] = False
+        request.session['pending_payment'] = False
+        resp.sms(message)
+        return str(resp)
+    try:
         # String with user information
         user_number = request.POST.get('From', None)[2:]
         user = Customer.objects.get(phone_number=user_number)
@@ -436,34 +468,95 @@ def pay(request):
             message = "Edit cancelled!"
             resp.sms(message)
         else: 
-            message = "Usage:\nPAY [10-digit phone number, no spaces] [amount]"
+            message = "Usage:\nPAY [10-digit phone number, no spaces] [amount, no dollar sign]"
             resp.sms(message)
     return str(resp)
 
 @twilio_view
 def req(request):
-    message_body = request.POST.get('Body', '')
-    request_started = request.session.get('request_started', False)
-    payment_request = message_body.split(" ")
     resp = twilio.twiml.Response()
-    if request_started:
-        resp.sms("Request started")
-    else:
-        if len(payment_request) == 3 and len(payment_request[1]) == 10 and payment_request[1].isnumeric() and is_float(payment_request[2]):
-            request.session['request_started'] = message_body.split(" ")[1:]
-            message = "You've requested $%s from %s. We'll let you know if they accept." % (payment_request[2], payment_request[1])
-            resp.sms(message)
-        elif message_body.upper() == "LEAVE":
-            request.session['request_started'] = False
-            message = "Edit cancelled!"
-            resp.sms(message)
+    try:
+        this_customer = Customer.objects.get(phone_number=request.POST.get('From', '')[2:])
+    except:
+        message = "Please register to use this feature!"
+        request.session['payment_request'] = False
+        request.session['pending_payment'] = False
+        resp.sms(message)
+        return str(resp)
+    
+    message_body = request.POST.get('Body', '')
+    payment_request = message_body.split(" ")
+
+    if len(payment_request) == 3 and len(payment_request[1]) == 10 and payment_request[1].isnumeric() and is_float(payment_request[2]):
+        if Customer.objects.filter(phone_number=payment_request[1]).count() == 1:
+            other_customer = Customer.objects.filter(phone_number=payment_request[1])[0]
+            resp.sms("We sent %s %s (%s) your request. You'll be notified if they approve or deny it!" % (other_customer.first_name, other_customer.last_name, other_customer.phone_number))
+            message = client.messages.create(body="Your friend %s %s (%s) has requested $%s from you using PayWithText. Type PAYREQUEST to view your requests." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, payment_request[2]), to="+1%s" % other_customer.phone_number, from_="+15126663017")
+            outstanding_requests.objects.create(issuer=this_customer, debtor=other_customer, amount=payment_request[2]).save()
         else:
-            resp.sms("Usage:\nREQUEST [10-digit phone number, no spaces] [amount]")
+            resp.sms("%s isn't a member yet. We sent them an invitation for you!")
+            message = client.messages.create(body="Your friend %s %s (%s) has requested $%s from you using PayWithText. Reply SIGNUP to start using the service! (Don't worry, we won't charge you right away)" % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, payment_request[2]), to="+1%s" % payment_request[1], from_="+15126663017")
+    else:
+        resp.sms("Usage:\nREQUEST [10-digit phone number, no spaces] [amount, no dollar sign]")
+    
     return str(resp)
 
+@twilio_view
+def payrequest(request):
+    resp = twilio.twiml.Response()
+    try:
+        this_customer = Customer.objects.get(phone_number=request.POST.get('From', '')[2:])
+    except:
+        message = "Please register to use this feature!"
+        request.session['payment_request'] = False
+        request.session['pending_payment'] = False
+        resp.sms(message)
+        return str(resp)
+    requests = outstanding_requests.objects.filter(debtor=this_customer)
+    message_body = request.POST.get('Body', '')
+    message_parsed = message_body.split(" ")
+    print(message_body, message_parsed)
+    request_made = request.session.get('request_made', False)
+    if request_made:
+        print(str(message_body), str(this_customer.pin))
+        if str(message_body) == str(this_customer.pin):
+            this_request = outstanding_requests.objects.filter(debtor=this_customer)[int(request_made[1])]
+            if request_made[2].upper() == 'APPROVE':
+                if get_balance(this_customer) >= this_request.amount:
+                    transfer_balance(this_customer, this_request.issuer, this_request.amount)
+                    resp.sms("You paid %s %s (%s) $%s.\nYour current balance is $%s." % (this_request.issuer.first_name, this_request.issuer.last_name, this_request.issuer.phone_number, this_request.amount, get_balance(this_customer)))
+                    message = client.messages.create(body="Your friend %s %s (%s) completed your request for $%s.\nYour balance is now $%s." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, this_request.amount, get_balance(this_request.issuer)), to="+1%s" % this_request.issuer.phone_number, from_="+15126663017")
+                    this_request.delete()
+                else:
+                    resp.sms("Your balance ($%s) is not high enough to complete this request ($%s)." % (get_balance(this_customer), this_request.amount))
+            else:
+                resp.sms("You denied %s %s (%s)'s request." % (this_request.issuer.first_name, this_request.issuer.last_name, this_request.issuer.phone_number))
+                message = client.messages.create(body="Your friend %s %s (%s) denied your request for $%s." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, this_request.amount), to="+1%s" % this_request.issuer.phone_number, from_="+15126663017")
+                this_request.delete()
+            request.session['request_made'] = False
+        elif message_body.upper() == "LEAVE":
+            resp.sms("You've left the PAYREQUEST prompt!")
+            request.session['request_made'] = False
+        else:
+            resp.sms("Sorry, that's the wrong pin. Please try again.")
+    else:
+        if len(message_parsed) == 3:
+            if int(message_parsed[1]) >= 0 and int(message_parsed[1]) < len(requests):
+                if message_parsed[2].upper() in ["APPROVE", "DENY"]:
+                    request.session['request_made'] = message_parsed
+                    resp.sms("Please enter your pin.")
+        else:
+            if requests.count() > 0:
+                message = "Requests\n" + "\n".join("%s. %s" % (index, request.show()) for index, request in enumerate(requests)) + "\nPlease select which debts to pay or ignore by sending \"PAYREQUEST [index] [APPROVE or DENY]\"." + "\nYou can type LEAVE at any time to exit the prompt."
+            else:
+                message = "You have no requests! :)"
+            resp.sms(message)
+    return str(resp)
+
+  
+
 def viewdb(request):
-    html = '<br>'.join(Customer.__repr__() for Customer in Customer.objects.all())
-    print(html)
+    html = '<br>'.join(Customer.__repr__() for Customer in Customer.objects.all()) + '<hr>' + '<br>'.join(req.__repr__() for req in outstanding_requests.objects.all())
     return HttpResponse(html)
 
 
