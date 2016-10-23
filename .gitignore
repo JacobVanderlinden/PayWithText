@@ -1,7 +1,5 @@
-old
 *.pyc
+connect.sh
+PayWithTextEC2.pem
+schema.sql
 .DS_Store
-# Elastic Beanstalk Files
-.elasticbeanstalk/*
-!.elasticbeanstalk/*.cfg.yml
-!.elasticbeanstalk/*.global.yml

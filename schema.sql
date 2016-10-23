@@ -1,0 +1,2 @@
+drop table if exists users;
+create table users (id integer primary key autoincrement, phone_number char(10) not null, first_name varchar(255) not null, last_name varchar(255) not null, pin int not null, c1customerid varchar(255))

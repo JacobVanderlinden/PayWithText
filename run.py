@@ -1,16 +1,32 @@
 # Imports
-
-from flask.ext.sqlalchemy import SQLAlchemy
-from flask import Flask, request, redirect, session
-import twilio.twiml
 import os
+import sqlite3
+
+from flask import Flask, request, g, redirect, session
+import twilio.twiml
 
 # Create Flask app
 SECRET_KEY = 'PNf624d537ef7e64bd1d7ed64100569af1' #SID
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DATABASE_URL']
-db = SQLAlchemy(app)
-#app.config.from_object(__name__)
+app.config.from_object(__name__)
+DATABASE = '/var/www/html/paywithtext/users.db'
+
+# Database methods
+
+def execute_query(query, args=()):
+    conn = sqlite3.connect(DATABASE)
+    c = conn.cursor()
+    c.execute(query, args)
+    conn.commit()
+    rows = c.fetchall()
+    c.close()
+    return rows
+
+@app.route("/viewdb", methods=["GET"])
+def viewdb():
+    rows = execute_query("""SELECT * FROM USERS""")
+    print(rows)
+    return '<br>'.join(str(row) for row in rows)
 
 # Entry point to application
 
@@ -75,6 +91,12 @@ def signup():
             if pin_requested:
                 if len(message_body) == 4 and message_body.isnumeric():
                     session['pin'] = message_body
+                    from_number = request.values.get('From', None)
+                    
+                    command = "INSERT INTO USERS (phone_number, first_name, last_name, pin, c1customerid) VALUES (?, ?, ?, ?, ?)"
+                    command_arguments = (from_number[2:], session['first_name'], session['last_name'], session['pin'], "example_c1_customer")
+                    execute_query(command, args=command_arguments)
+                    
                     message = "Signup complete! Type CMD for a list of available commands."
                     session['is_authenticated'] = True
                     session['signup_started'] = False
@@ -109,7 +131,11 @@ def view():
     # Create TwiML response
     resp = twilio.twiml.Response()
     # String with user information
-    message = "Name: %s %s\nPin:%s" % (session['first_name'], session['last_name'], session['pin'])
+    command = "select * from users where (phone_number = ?)"
+    command_arguments = (request.values.get('From', None)[2:],)
+    user = execute_query(command, args=command_arguments)[0]
+    print(user)
+    message = "First name: %s\nLast name: %s\nPhone number: %s\nPin: %s\n" % (user[1], user[2], user[3], user[4])
     resp.sms(message)
     # Return TwiML
     return str(resp)
@@ -133,6 +159,8 @@ def restart():
     session['edit_started'] = False
     session['pin_confirmed'] = False
     session['trait_selected'] = False
+    # Removing row from database
+    execute_query("""delete from users where (phone_number = ?)""", args=(request.values.get('From', None)[2:],))
     # Confirm removal
     message = "Your account has been reset. Please respond with SIGNUP to re-register."
     resp.sms(message)
@@ -196,6 +224,15 @@ def edit():
                     else:
                         message = "Sorry, that's not a valid PIN number."
                         resp.sms(message)
+
+                command = """
+                    update users
+                    set first_name = ?, last_name = ?, pin = ?
+                    where (phone_number = ?)
+                """
+                command_arguments = (session['first_name'], session['last_name'], session['pin'], request.values.get('From', None)[2:])
+                execute_query(command, args=command_arguments)
+
             else:
                 
                 if message_body in characteristics:
@@ -226,6 +263,7 @@ def edit():
         resp.sms(message)
     # Return TwiML
     return str(resp)
+
 # Run Flask app
 if __name__ == "__main__":
     app.run(debug=True)
