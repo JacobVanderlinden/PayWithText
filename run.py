@@ -10,7 +10,7 @@ SECRET_KEY = 'PNf624d537ef7e64bd1d7ed64100569af1' #SID
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DATABASE_URL']
 db = SQLAlchemy(app)
-app.config.from_object(__name__)
+#app.config.from_object(__name__)
 
 # Entry point to application
 
