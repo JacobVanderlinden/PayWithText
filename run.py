@@ -3,6 +3,7 @@
 from flask.ext.sqlalchemy import SQLAlchemy
 from flask import Flask, request, redirect, session
 import twilio.twiml
+import os
 
 # Create Flask app
 SECRET_KEY = 'PNf624d537ef7e64bd1d7ed64100569af1' #SID
