@@ -430,10 +430,10 @@ def pay(request):
                 if Customer.objects.filter(phone_number=pending_payment[0]).count() == 1:
                     other_customer = Customer.objects.get(phone_number=pending_payment[0])
                     success = transfer_balance(this_customer, other_customer, pending_payment[1])
-                    message = "You've successfully transferred $%s to %s.\nAfter processing, your balance will be $%d." % (pending_payment[1], other_customer.first_name, float(get_balance(this_customer)) - float(pending_payment[1]))
+                    message = "You've successfully transferred $%s to %s.\nAfter processing, your balance will be $%.2f." % (pending_payment[1], other_customer.first_name, float(get_balance(this_customer)) - float(pending_payment[1]))
                     resp.sms(message)
 
-                    message = client.messages.create(body="%s %s (%s) just sent you $%s using PayWithText. After processing, your balance will be $%d." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, pending_payment[1], float(get_balance(other_customer)) + float(pending_payment[1])), to="+1%s" % other_customer.phone_number, from_="+15126663017")
+                    message = client.messages.create(body="%s %s (%s) just sent you $%s using PayWithText. After processing, your balance will be $%.2f." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, pending_payment[1], float(get_balance(other_customer)) + float(pending_payment[1])), to="+1%s" % other_customer.phone_number, from_="+15126663017")
                     print(message.sid)
                     request.session['payment_request'] = False
                     request.session['pending_payment'] = False
@@ -518,11 +518,11 @@ def payrequest(request):
             if request_made[2].upper() == 'APPROVE':
                 if get_balance(this_customer) >= this_request.amount:
                     transfer_balance(this_customer, this_request.issuer, this_request.amount)
-                    resp.sms("You paid %s %s (%s) $%s.\nAfter processing, your balance will be $%s." % (this_request.issuer.first_name, this_request.issuer.last_name, this_request.issuer.phone_number, this_request.amount, float(get_balance(this_customer)) - float(this_request.amount)))
+                    resp.sms("You paid %s %s (%s) $%s.\nAfter processing, your balance will be $%.2f." % (this_request.issuer.first_name, this_request.issuer.last_name, this_request.issuer.phone_number, this_request.amount, float(get_balance(this_customer)) - float(this_request.amount)))
                     message = client.messages.create(body="Your friend %s %s (%s) completed your request for $%s.\nAfter processing, your balance will be $%s." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, this_request.amount, float(get_balance(this_request.issuer)) + float(this_request.amount)), to="+1%s" % this_request.issuer.phone_number, from_="+15126663017")
                     this_request.delete()
                 else:
-                    resp.sms("Your balance ($%s) is not high enough to complete this request ($%s)." % (get_balance(this_customer), this_request.amount))
+                    resp.sms("Your balance ($%s) is not high enough to complete this request ($%.2f)." % (get_balance(this_customer), this_request.amount))
             else:
                 resp.sms("You denied %s %s (%s)'s request." % (this_request.issuer.first_name, this_request.issuer.last_name, this_request.issuer.phone_number))
                 message = client.messages.create(body="Your friend %s %s (%s) denied your request for $%s." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, this_request.amount), to="+1%s" % this_request.issuer.phone_number, from_="+15126663017")
