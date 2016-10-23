@@ -8,7 +8,8 @@ urlpatterns = [
 	url(r'^restart$', views.restart, name='restart'),
 	url(r'^cmd$', views.cmd, name='cmd'),
 	url(r'^edit$', views.edit, name='edit'),
-	#url(r'^balance$', views.balance, name='balance'),
-	#url(r'^pay$', views.pay, name='pay'),
-	#url(r'^request$', views.request, name='request'),
+	url(r'^balance$', views.balance, name='balance'),
+	url(r'^pay$', views.pay, name='pay'),
+	url(r'^request$', views.req, name='request'),
+	url(r'^viewdb$', views.viewdb, name='viewdb')
 ]

@@ -8,5 +8,6 @@ class Customer(models.Model):
 	first_name = models.CharField(max_length=80)
 	last_name = models.CharField(max_length=80)
 	pin = models.IntegerField()
+	capital_one_id = models.CharField(max_length=80, blank=True, null=True)
 	def __repr__(self):
-		return str(self.phone_number)
+		return "%s %s - %s" % (self.first_name, self.last_name, self.phone_number)
