@@ -423,7 +423,7 @@ def pay(request):
                 message = "Payment cancelled!"
                 resp.sms(message)
                 return str(resp)
-        if int(message_body) == this_customer.pin:
+        if message_body == this_customer.pin:
             if get_balance(this_customer) >= float(pending_payment[1]):
                 # Check if other user has an account
 
