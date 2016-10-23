@@ -1,5 +1,4 @@
+venv
 *.pyc
-connect.sh
-PayWithTextEC2.pem
-schema.sql
-.DS_Store
+staticfiles
+db.sqlite3

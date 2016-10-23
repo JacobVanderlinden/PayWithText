@@ -1,44 +1,20 @@
-# Imports
-import os
-import sqlite3
-
-from flask import Flask, request, g, redirect, session
+from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
 import twilio.twiml
+from models import Customer
+from django.http.response import HttpResponse
+from django_twilio.decorators import twilio_view
 
-# Create Flask app
-SECRET_KEY = 'PNf624d537ef7e64bd1d7ed64100569af1' #SID
-app = Flask(__name__)
-app.config.from_object(__name__)
-DATABASE = '/var/www/html/paywithtext/users.db'
-
-# Database methods
-
-def execute_query(query, args=()):
-    conn = sqlite3.connect(DATABASE)
-    c = conn.cursor()
-    c.execute(query, args)
-    conn.commit()
-    rows = c.fetchall()
-    c.close()
-    return rows
-
-@app.route("/viewdb", methods=["GET"])
-def viewdb():
-    rows = execute_query("""SELECT * FROM USERS""")
-    print(rows)
-    return '<br>'.join(str(row) for row in rows)
-
-# Entry point to application
-
-@app.route("/", methods=['GET', 'POST'])
-def entry():
+# Create your views here.
+@twilio_view
+def entry(request):
     # Get current message and uppercase value of message (in case of keyword)
-    message_body = request.values.get('Body').strip()
+    message_body = request.POST.get('Body', '')
     message_upper = message_body.upper()
     # Create a twilio response
     resp = twilio.twiml.Response()
     # Check if user is authenticated
-    is_authenticated = session.get('is_authenticated', False)
+    is_authenticated = request.session.get('is_authenticated', False)
     # Each path supported by application
     keywords = {
         "SIGNUP":"/signup",
@@ -58,7 +34,7 @@ def entry():
     # Check if user is in states established above
     state_added = False
     for state in states:
-        if session.get(state):
+        if request.session.get(state):
             resp.redirect(states[state])
             state_added = True
     # Check if user sent keyword
@@ -71,47 +47,46 @@ def entry():
         else:
             resp.sms("Welcome to PayWithText! Respond SIGNUP to start using our service.")
     # Return TwiML
-    return str(resp)
+    return resp
 
 # Signup view
-@app.route("/signup", methods=['GET', 'POST'])
-def signup():
+@twilio_view
+def signup(request):
     # Create Twilio response
     resp = twilio.twiml.Response()
     # Get message body
-    message_body = request.values.get('Body').strip()
+    message_body = request.POST.get('Body', '')
     # Check for signup states
-    signup_started = session.get('signup_started', False)
-    pin_requested = session.get('pin_requested', False)
-    is_authenticated = session.get('is_authenticated', False)
-    first_name_given = session.get('first_name_given', False)
+    signup_started = request.session.get('signup_started', False)
+    pin_requested = request.session.get('pin_requested', False)
+    is_authenticated = request.session.get('is_authenticated', False)
+    first_name_given = request.session.get('first_name_given', False)
     # Begin signup tree traversal
     if signup_started:
         if first_name_given:
             if pin_requested:
                 if len(message_body) == 4 and message_body.isnumeric():
-                    session['pin'] = message_body
-                    from_number = request.values.get('From', None)
+                    request.session['pin'] = message_body
+                    from_number = request.POST.get('From', None)[2:]
                     
-                    command = "INSERT INTO USERS (phone_number, first_name, last_name, pin, c1customerid) VALUES (?, ?, ?, ?, ?)"
-                    command_arguments = (from_number[2:], session['first_name'], session['last_name'], session['pin'], "example_c1_customer")
-                    execute_query(command, args=command_arguments)
+                    new_user = Customer.objects.create(phone_number=from_number, first_name=request.session['first_name'], last_name=request.session['last_name'], pin=request.session['pin'])
+                    new_user.save()
                     
                     message = "Signup complete! Type CMD for a list of available commands."
-                    session['is_authenticated'] = True
-                    session['signup_started'] = False
+                    request.session['is_authenticated'] = True
+                    request.session['signup_started'] = False
                     resp.sms(message)
                 else:
                     message = "Sorry, please send a 4-digit numeric pin."
                     resp.sms(message)
             else:
-                session['last_name'] = message_body
+                request.session['last_name'] = message_body
                 message = "Great. Now, please enter a 4-digit numeric pin we'll use to confirm your payments."
-                session['pin_requested'] = True
+                request.session['pin_requested'] = True
                 resp.sms(message)
         else:
-            session['first_name'] = message_body
-            session['first_name_given'] = True
+            request.session['first_name'] = message_body
+            request.session['first_name_given'] = True
             message = "Thanks %s! What's your last name?" % message_body
             resp.sms(message)
     else:
@@ -120,47 +95,54 @@ def signup():
             resp.sms(message)
         else:
             message = "Let's get you signed up! Please reply with your first name."
-            session['signup_started'] = True
+            request.session['signup_started'] = True
             resp.sms(message)
     # Return TwiML
     return str(resp)
 
 # View to see current user information. Remove in production, used for debugging
-@app.route("/view", methods=["GET", "POST"])
-def view():
+@twilio_view
+def view(request):
     # Create TwiML response
     resp = twilio.twiml.Response()
     # String with user information
-    command = "select * from users where (phone_number = ?)"
-    command_arguments = (request.values.get('From', None)[2:],)
-    user = execute_query(command, args=command_arguments)[0]
-    print(user)
-    message = "First name: %s\nLast name: %s\nPhone number: %s\nPin: %s\n" % (user[1], user[2], user[3], user[4])
+    user_number = request.POST.get('From', None)[2:]
+    print(user_number)
+    print(Customer.objects.all())
+    user_list = Customer.objects.filter(phone_number=user_number)
+    if len(user_list) == 1:
+        user = user_list[0]
+        message = "First name: %s\nLast name: %s\nPhone number: %s\nPin: %s" % (user.first_name, user.last_name, user.phone_number, user.pin)
+    else:
+        message = "Sorry, you weren't found in our database."
     resp.sms(message)
     # Return TwiML
     return str(resp)
 
 # Resets account associated with phone number
 # In production, replace middle section by deleting row in DB associated with phone number
-@app.route("/restart", methods=["GET", "POST"])
-def restart():
+@twilio_view
+def restart(request):
     # Create TwiML response
     resp = twilio.twiml.Response()
     # Remove states from signup
-    session['is_authenticated'] = False
-    session['signup_started'] = False
-    session['pin_requested'] = False
-    session['first_name_given'] = False
+    request.session['is_authenticated'] = False
+    request.session['signup_started'] = False
+    request.session['pin_requested'] = False
+    request.session['first_name_given'] = False
     # Remove user information
-    session['first_name'] = None
-    session['last_name'] = None
-    session['pin'] = None
+    request.session['first_name'] = None
+    request.session['last_name'] = None
+    request.session['pin'] = None
     # Remove states from edit
-    session['edit_started'] = False
-    session['pin_confirmed'] = False
-    session['trait_selected'] = False
+    request.session['edit_started'] = False
+    request.session['pin_confirmed'] = False
+    request.session['trait_selected'] = False
     # Removing row from database
-    execute_query("""delete from users where (phone_number = ?)""", args=(request.values.get('From', None)[2:],))
+    try:
+        Customer.objects.filter(phone_number=request.POST.get('From', None)[2:]).delete()
+    except:
+        pass
     # Confirm removal
     message = "Your account has been reset. Please respond with SIGNUP to re-register."
     resp.sms(message)
@@ -168,8 +150,8 @@ def restart():
     return str(resp)
 
 # See list of available commands 
-@app.route("/cmd", methods=["GET", "POST"])
-def cmd():
+@twilio_view
+def cmd(request):
     #Establish response
     resp = twilio.twiml.Response()
     message = """
@@ -186,15 +168,15 @@ def cmd():
     return str(resp)
 
 # Edit current information
-@app.route("/edit", methods=["GET", "POST"])
-def edit():
+@twilio_view
+def edit(request):
     # Establish response and evaluate message body text
     resp = twilio.twiml.Response()
-    message_body = request.values.get('Body').strip()
+    message_body = request.POST.get('Body', '')
     # Check for Edit states
-    edit_started = session.get('edit_started', False)
-    pin_verified = session.get('pin_verified', False)
-    trait_selected = session.get('trait_selected', False)
+    edit_started = request.session.get('edit_started', False)
+    pin_verified = request.session.get('pin_verified', False)
+    trait_selected = request.session.get('trait_selected', False)
     # List of characteristics to edit
     characteristics = {
         #ID:[trait_name, verbose_name],
@@ -207,37 +189,33 @@ def edit():
         if pin_verified:
             if trait_selected:
                 if trait_selected != "3":
-                    session[characteristics[trait_selected][0]] = message_body
-                    session["edit_started"] = False
-                    session["pin_verified"] = False
-                    session["trait_selected"] = False
+                    request.session[characteristics[trait_selected][0]] = message_body
+                    request.session["edit_started"] = False
+                    request.session["pin_verified"] = False
+                    request.session["trait_selected"] = False
                     message = "Change successful."
                     resp.sms(message)
                 else:
                     if len(message_body) == 4 and message_body.isnumeric():
-                        session['pin'] = message_body
-                        session["edit_started"] = False
-                        session["pin_verified"] = False
-                        session["trait_selected"] = False
+                        request.session['pin'] = message_body
+                        request.session["edit_started"] = False
+                        request.session["pin_verified"] = False
+                        request.session["trait_selected"] = False
                         message = "Change successful."
                         resp.sms(message)
                     else:
                         message = "Sorry, that's not a valid PIN number."
                         resp.sms(message)
-
-                command = """
-                    update users
-                    set first_name = ?, last_name = ?, pin = ?
-                    where (phone_number = ?)
-                """
-                command_arguments = (session['first_name'], session['last_name'], session['pin'], request.values.get('From', None)[2:])
-                execute_query(command, args=command_arguments)
-
+                user_to_change = Customer.objects.filter(phone_number=request.POST.get('From', None)[2:])[0]
+                user_to_change.first_name = request.session['first_name']
+                user_to_change.last_name = request.session['last_name']
+                user_to_change.pin = request.session['pin']
+                user_to_change.save()
             else:
                 
                 if message_body in characteristics:
                     trait_selected = message_body
-                    session['trait_selected'] = message_body
+                    request.session['trait_selected'] = message_body
                     message = "What would you like to change your %s to?" % characteristics[trait_selected][1]
                     resp.sms(message)
                 else:
@@ -245,13 +223,13 @@ def edit():
                     resp.sms(message)
         else:
             if message_body.upper() == "LEAVE":
-                session['edit_started'] = False
-                session['pin_verified'] = False
-                session['trait_selected'] = False
+                request.session['edit_started'] = False
+                request.session['pin_verified'] = False
+                request.session['trait_selected'] = False
                 message = "Edit cancelled!"
                 resp.sms(message)
-            elif message_body == session['pin']:
-                session['pin_verified'] = True
+            elif message_body == request.session['pin']:
+                request.session['pin_verified'] = True
                 message = "Please reply with the number of the item you'd like to edit:\n1. First name\n2. Last name\n3. Pin"
                 resp.sms(message)
             else:
@@ -259,11 +237,7 @@ def edit():
                 resp.sms(message)
     else:
         message = "Please enter your pin to make changes."
-        session['edit_started'] = True
+        request.session['edit_started'] = True
         resp.sms(message)
     # Return TwiML
     return str(resp)
-
-# Run Flask app
-if __name__ == "__main__":
-    app.run(debug=True)
