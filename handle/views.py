@@ -263,7 +263,7 @@ def restart(request):
     request.session['trait_selected'] = False
     # Remove states from pay and request
     request.session['pending_payment'] = False
-    request.sesssion['payment_request'] = False
+    request.session['payment_request'] = False
     request.session['request_started'] = False
     request.session['request_shown'] = False
     request.session['request_selected'] = False
