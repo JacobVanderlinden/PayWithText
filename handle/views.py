@@ -433,7 +433,7 @@ def pay(request):
                     message = "You've successfully transferred $%s to %s.\nAfter processing, your balance will be $%d." % (pending_payment[1], other_customer.first_name, float(get_balance(this_customer)) - float(pending_payment[1]))
                     resp.sms(message)
 
-                    message = client.messages.create(body="%s %s (%s) just sent you $%s using PayWithText. After processing, your balance will be $%d." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, pending_payment[1], float(get_balance(this_customer)) + float(pending_payment[1])), to="+1%s" % other_customer.phone_number, from_="+15126663017")
+                    message = client.messages.create(body="%s %s (%s) just sent you $%s using PayWithText. After processing, your balance will be $%d." % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, pending_payment[1], float(get_balance(other_customer)) + float(pending_payment[1])), to="+1%s" % other_customer.phone_number, from_="+15126663017")
                     print(message.sid)
                     request.session['payment_request'] = False
                     request.session['pending_payment'] = False
