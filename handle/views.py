@@ -242,12 +242,6 @@ def view(request):
 def restart(request):
     # Create TwiML response
     resp = twilio.twiml.Response()
-    try:
-        this_customer = Customer.objects.get(phone_number=request.POST.get('From', '')[2:])
-    except:
-        message = "You're not signed up - you can't restart!"
-        resp.sms(message)
-        return str(resp)
     # Remove states from signup
     request.session['is_authenticated'] = False
     request.session['signup_started'] = False
