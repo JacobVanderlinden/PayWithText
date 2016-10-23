@@ -9,3 +9,4 @@ babel==2.3.4
 django-phonenumber-field==1.1.0
 django-twilio==0.8.0
 phonenumberslite==7.7.2
+requests==2.9.1
