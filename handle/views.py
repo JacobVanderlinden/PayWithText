@@ -440,9 +440,9 @@ def pay(request):
                 else:
                     message = "%s isn't a member yet. We've sent them an invitation for you!" % pending_payment[0]
                     resp.sms(message)
+                    message = client.messages.create(body="Your friend %s %s (%s) wants to send you $%s using PayWithText. Reply SIGNUP to claim it!" % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, pending_payment[1]), to="+1%s" % pending_payment[0], from_="+15126663017")
                     request.session['payment_request'] = False
                     request.session['pending_payment'] = False
-                    message = client.messages.create(body="Your friend %s %s (%s) wants to send you $%s using PayWithText. Reply SIGNUP to claim it!" % (this_customer.first_name, this_customer.last_name, this_customer.phone_number, pending_payment[1]), to="+1%s" % pending_payment[0], from_="+15126663017")
             else:
                 message = "You have insufficient funds for this payment."
                 resp.sms(message)
